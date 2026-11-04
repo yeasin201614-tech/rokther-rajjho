@@ -169,10 +169,17 @@ function DonorsContent() {
             <select
               value={district}
               onChange={(e) => {
-                setDistrict(e.target.value);
+                const val = e.target.value;
+                setDistrict(val);
                 setUpazila("");
+                if (val) {
+                  const dist = DISTRICTS.find((d) => d.id === val);
+                  if (dist && !division) {
+                    setDivision(dist.divisionId);
+                  }
+                }
               }}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30 truncate"
             >
               <option value="">{language === "bn" ? "সকল জেলা" : "All Districts"}</option>
               {filteredDistricts.map((d) => (
@@ -192,9 +199,14 @@ function DonorsContent() {
               value={upazila}
               onChange={(e) => setUpazila(e.target.value)}
               disabled={!district || upazilaList.length === 0}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30 disabled:opacity-50"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30 disabled:opacity-60 disabled:cursor-not-allowed truncate"
+              title={!district ? (language === "bn" ? "প্রথমে জেলা নির্বাচন করুন" : "Please select a district first") : ""}
             >
-              <option value="">{language === "bn" ? "সকল উপজেলা" : "All Upazilas"}</option>
+              <option value="">
+                {!district
+                  ? (language === "bn" ? "আগে জেলা বাছুন" : "Select District")
+                  : (language === "bn" ? "সকল উপজেলা" : "All Upazilas")}
+              </option>
               {upazilaList.map((up) => (
                 <option key={up.id} value={up.id}>
                   {language === "bn" ? up.bnName : up.name}

@@ -342,12 +342,19 @@ export default function RequestBloodPage() {
                 <select
                   value={district}
                   onChange={(e) => {
-                    setDistrict(e.target.value);
+                    const val = e.target.value;
+                    setDistrict(val);
                     setUpazila("");
+                    if (val) {
+                      const dist = DISTRICTS.find((d) => d.id === val);
+                      if (dist && !division) {
+                        setDivision(dist.divisionId);
+                      }
+                    }
                   }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30 truncate"
                 >
-                  <option value="">Select District</option>
+                  <option value="">{language === "bn" ? "জেলা নির্বাচন" : "Select District"}</option>
                   {filteredDistricts.map((d) => (
                     <option key={d.id} value={d.id}>
                       {language === "bn" ? d.bnName : d.name}
@@ -364,9 +371,13 @@ export default function RequestBloodPage() {
                   value={upazila}
                   onChange={(e) => setUpazila(e.target.value)}
                   disabled={!district || upazilaList.length === 0}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30 disabled:opacity-50"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30 disabled:opacity-60 disabled:cursor-not-allowed truncate"
                 >
-                  <option value="">Select Upazila</option>
+                  <option value="">
+                    {!district
+                      ? (language === "bn" ? "আগে জেলা বাছুন" : "Select District First")
+                      : (language === "bn" ? "উপজেলা নির্বাচন" : "Select Upazila")}
+                  </option>
                   {upazilaList.map((up) => (
                     <option key={up.id} value={up.id}>
                       {language === "bn" ? up.bnName : up.name}

@@ -210,10 +210,17 @@ export default function HomePage() {
                     <select
                       value={selectedDistrict}
                       onChange={(e) => {
-                        setSelectedDistrict(e.target.value);
+                        const val = e.target.value;
+                        setSelectedDistrict(val);
                         setSelectedUpazila("");
+                        if (val) {
+                          const dist = DISTRICTS.find((d) => d.id === val);
+                          if (dist && !selectedDivision) {
+                            setSelectedDivision(dist.divisionId);
+                          }
+                        }
                       }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30 truncate"
                     >
                       <option value="">{t.hero.selectDistrict}</option>
                       {filteredDistricts.map((d) => (
@@ -233,9 +240,14 @@ export default function HomePage() {
                       value={selectedUpazila}
                       onChange={(e) => setSelectedUpazila(e.target.value)}
                       disabled={!selectedDistrict || upazilaList.length === 0}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30 disabled:opacity-50"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-red/30 disabled:opacity-60 disabled:cursor-not-allowed truncate"
+                      title={!selectedDistrict ? (language === "bn" ? "প্রথমে জেলা নির্বাচন করুন" : "Please select a district first") : ""}
                     >
-                      <option value="">{t.hero.selectUpazila}</option>
+                      <option value="">
+                        {!selectedDistrict
+                          ? (language === "bn" ? "আগে জেলা বাছুন" : "Select District")
+                          : (language === "bn" ? "সকল উপজেলা" : "All Upazilas")}
+                      </option>
                       {upazilaList.map((up) => (
                         <option key={up.id} value={up.id}>
                           {language === "bn" ? up.bnName : up.name}
@@ -248,7 +260,7 @@ export default function HomePage() {
                   <div className="flex items-end sm:col-span-2 md:col-span-4 lg:col-span-1">
                     <button
                       type="submit"
-                      className="w-full flex items-center justify-center gap-1.5 bg-brand-red hover:bg-brand-redDark text-white py-2.5 px-4 rounded-xl font-bold text-xs shadow-md transition-all active:scale-95"
+                      className="w-full flex items-center justify-center gap-1.5 bg-brand-red hover:bg-brand-redDark text-white py-2.5 px-3 rounded-xl font-bold text-xs shadow-md transition-all active:scale-95 whitespace-nowrap"
                     >
                       <Search className="w-3.5 h-3.5" />
                       <span>{t.hero.searchBtn}</span>
