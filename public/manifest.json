@@ -1,0 +1,22 @@
+{
+  "name": "Rokther Rajjho - রক্তের রাজ্য",
+  "short_name": "Rokther Rajjho",
+  "description": "National Blood Donation Network of Bangladesh - রক্তের বন্ধনে, জীবনের প্রয়োজনে।",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#14213D",
+  "theme_color": "#E53945",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

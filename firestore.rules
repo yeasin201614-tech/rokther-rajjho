@@ -1,0 +1,743 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: profiles/{userId}
+// Document ID: userId (Matches Firebase Auth request.auth.uid)
+// Fields:
+//   - donorId: string (required, immutable on update, 5-32 chars) - E.g. "RR-BD-2026-000125"
+//   - fullName: string (required, 1-150 chars) - Donor full name in English
+//   - bengaliName: string (optional, 0-150 chars) - Donor full name in Bengali script
+//   - email: string (required, valid email, max 255 chars) - Donor email address
+//   - phone: string (required, 5-25 chars) - Primary contact phone number
+//   - bloodGroup: string (required, valid blood group enum: 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')
+//   - gender: string (optional, enum: 'Male', 'Female', 'Other', 'MALE', 'FEMALE', 'OTHER')
+//   - divisionId: string (required, 1-50 chars) - Administrative division ID (e.g. 'dhaka')
+//   - districtId: string (required, 1-50 chars) - District ID (e.g. 'dhaka', 'gazipur')
+//   - upazilaId: string (required, 1-50 chars) - Upazila ID (e.g. 'dhanmondi', 'mirpur')
+//   - address: string (optional, 0-500 chars) - Present residential or street address
+//   - isAvailable: bool (required) - True if active and eligible to donate blood
+//   - lastDonationDate: string/timestamp/null (optional) - Date of most recent donation
+//   - nextEligibleDate: string/timestamp (optional, 0-50 chars) - 90-day next eligible date
+//   - totalDonations: int (required, >= 0, verified field) - Lifetime donation count
+//   - rating: number (required, 0.0 - 5.0, verified field) - Donor average star rating
+//   - reviewCount: int (required, >= 0, verified field) - Count of completed reviews
+//   - isVerified: bool (required, admin-only editable) - Platform verification badge status
+//   - avatarUrl: string (optional, valid URL, max 1000 chars) - Profile picture URL
+//   - validUntil: string (optional, max 50 chars) - Digital donor ID card validity period
+//   - bio: string (optional, max 1000 chars) - Donor bio or personal note
+//   - role: string (required, enum: 'DONOR', 'RECIPIENT', 'VOLUNTEER', 'ORGANIZATION', 'ORGANIZATION_ADMIN', 'ADMIN', 'SYSTEM_ADMIN')
+//   - emergencyContact: string (optional, max 25 chars) - Emergency secondary phone
+//   - nidNumber: string (optional, max 30 chars) - National ID number
+//   - createdAt: timestamp/string (optional)
+//   - updatedAt: timestamp/string (optional)
+//
+// Collection: blood_requests/{requestId}
+// Document ID: Auto-generated UUID or custom request ID
+// Fields:
+//   - id: string (optional, max 100 chars)
+//   - requesterId: string (required, immutable on update, 1-128 chars) - Auth UID of user creating request
+//   - patientName: string (required, 1-150 chars) - Patient full name
+//   - bloodGroup: string (required, valid blood group enum)
+//   - unitsNeeded: int (required, 1-50) - Units / bags of blood needed
+//   - hospitalName: string (required, 1-255 chars) - Hospital / Clinic name
+//   - hospitalAddress: string (optional, 0-500 chars) - Full address of hospital ward/bed
+//   - divisionId: string (required, 1-50 chars)
+//   - districtId: string (required, 1-50 chars)
+//   - upazilaId: string (required, 1-50 chars)
+//   - contactNumber: string (required, 5-25 chars) - Attendant primary phone
+//   - alternateNumber: string (optional, max 25 chars) - Secondary phone
+//   - urgencyLevel: string (required, enum: 'IMMEDIATE', 'CRITICAL', 'NORMAL')
+//   - requiredDate: string (required, 1-50 chars) - When blood is needed
+//   - requiredTime: string (optional, 0-50 chars) - Specific time or window
+//   - reason: string (optional, 0-1000 chars) - Clinical reason (e.g. Surgery, Accident, Thalassemia)
+//   - status: string (required, enum: 'PENDING', 'SEARCHING', 'MATCHED', 'COMPLETED', 'CANCELLED')
+//   - matchedDonorName: string (optional, max 150 chars)
+//   - matchedDonorPhone: string (optional, max 25 chars)
+//   - matchedDonorId: string (optional, max 128 chars) - UID of donor who accepted the request
+//   - medicalDocumentsUrl: string (optional, max 1000 chars) - Verification requisition slip URL
+//   - createdAt: timestamp/string (optional)
+//   - updatedAt: timestamp/string (optional)
+//
+// Collection: donations/{donationId}
+// Document ID: Auto-generated UUID or custom donation ID
+// Fields:
+//   - id: string (optional, max 100 chars)
+//   - donorId: string (required, immutable on update, 1-128 chars) - Auth UID of donor
+//   - requestId: string (optional, max 128 chars) - Linked emergency blood request
+//   - patientName: string (optional, max 150 chars)
+//   - hospitalName: string (required, 1-255 chars)
+//   - donationDate: string/timestamp (required)
+//   - bloodGroup: string (required, valid blood group enum)
+//   - units: int (required, 1-10)
+//   - certificateNumber: string (optional, max 100 chars) - E.g. "RR-CERT-2026-90412"
+//   - isVerified: bool (required, admin/org-only editable)
+//   - verifiedBy: string (optional, max 150 chars) - Name of verifying official or organization
+//   - verifiedByOrgId: string (optional, max 128 chars) - ID of verifying organization
+//   - proofDocumentUrl: string (optional, max 1000 chars) - Blood bag sticker or slip image URL
+//   - notes: string (optional, max 1000 chars)
+//   - createdAt: timestamp/string (optional)
+//
+// Collection: organizations/{orgId}
+// Document ID: Organization slug or UUID
+// Fields:
+//   - id: string (optional, max 100 chars)
+//   - name: string (required, 1-200 chars) - Organization name in English
+//   - bengaliName: string (optional, max 200 chars) - Organization name in Bengali
+//   - type: string (optional, max 100 chars) - E.g. "Voluntary Blood Club", "NGO"
+//   - registrationNumber: string (optional, max 100 chars) - Official govt/university registration
+//   - divisionId: string (required, 1-50 chars)
+//   - districtId: string (required, 1-50 chars)
+//   - upazilaId: string (optional, max 50 chars)
+//   - contactPhone: string (required, 5-25 chars)
+//   - contactEmail: string (optional, valid email, max 255 chars)
+//   - website: string (optional, valid URL, max 255 chars)
+//   - address: string (optional, max 500 chars)
+//   - logoUrl: string (optional, max 1000 chars)
+//   - isVerified: bool (required, admin-only editable) - Platform verification badge
+//   - memberCount: int (required, >= 0)
+//   - totalDonations: int (optional, >= 0)
+//   - campaignsCount: int (optional, >= 0)
+//   - adminUids: list (optional, max 50 items) - List of user UIDs permitted to manage org
+//   - adminId: string (optional, max 128 chars) - Primary owner UID
+//   - description: string (optional, max 2000 chars)
+//   - createdAt: timestamp/string (optional)
+//   - updatedAt: timestamp/string (optional)
+//
+// Collection: campaigns/{campaignId}
+// Document ID: Campaign slug or UUID
+// Fields:
+//   - id: string (optional, max 100 chars)
+//   - orgId: string (required, immutable on update, 1-128 chars) - Organization ID
+//   - orgName: string (optional, max 200 chars)
+//   - title: string (required, 1-255 chars) - Campaign headline
+//   - bengaliTitle: string (optional, max 255 chars)
+//   - venue: string (optional, max 255 chars) - Location e.g. "TSC Auditorium, DU"
+//   - divisionId: string (optional, max 50 chars)
+//   - districtId: string (required, 1-50 chars)
+//   - upazilaId: string (optional, max 50 chars)
+//   - startDate: string/timestamp (required)
+//   - endDate: string/timestamp (required)
+//   - targetUnits: int (required, >= 1)
+//   - registeredCount: int (required, >= 0)
+//   - bannerUrl: string (optional, max 1000 chars)
+//   - description: string (optional, max 2000 chars)
+//   - status: string (optional, enum: 'UPCOMING', 'ONGOING', 'COMPLETED', 'CANCELLED')
+//   - createdBy: string (optional, max 128 chars)
+//   - createdAt: timestamp/string (optional)
+//   - updatedAt: timestamp/string (optional)
+//
+// Collection: reviews/{reviewId}
+// Document ID: Auto-generated UUID
+// Fields:
+//   - id: string (optional, max 100 chars)
+//   - donorId: string (required, immutable on update, 1-128 chars) - UID of donor being reviewed
+//   - reviewerId: string (required, immutable on update, 1-128 chars) - UID of reviewer (must match request.auth.uid)
+//   - reviewerName: string (required, 1-150 chars)
+//   - rating: number (required, 1 to 5)
+//   - comment: string (required, 1-1000 chars)
+//   - createdAt: timestamp/string (optional)
+//   - date: string (optional, max 50 chars)
+//
+// Collection: notifications/{notificationId}
+// Document ID: Auto-generated UUID
+// Fields:
+//   - id: string (optional, max 100 chars)
+//   - userId: string (required, immutable on update, 1-128 chars) - Recipient UID
+//   - title: string (required, 1-200 chars)
+//   - message: string (required, 1-1000 chars)
+//   - type: string (required, enum: 'EMERGENCY', 'EMERGENCY_SOS', 'SUCCESS', 'INFO', 'STATUS_CHANGE', 'BADGE_AWARD')
+//   - link: string (optional, max 500 chars)
+//   - isRead: bool (required) - Notification read status
+//   - senderId: string (optional, max 128 chars)
+//   - createdAt: timestamp/string (optional)
+//   - date: string (optional, max 50 chars)
+//
+// Collection: badges/{badgeId}
+// Document ID: Auto-generated UUID
+// Fields:
+//   - id: string (optional, max 100 chars)
+//   - userId: string (required, 1-128 chars) - Donor UID
+//   - key: string (required, 1-50 chars) - Badge identifier e.g. "FIRST_DROP", "LIFE_SAVER"
+//   - title: string (required, 1-100 chars)
+//   - bengaliTitle: string (required, 1-100 chars)
+//   - description: string (required, 1-500 chars)
+//   - icon: string (required, 1-50 chars)
+//   - unlockedAt: string/timestamp (optional)
+//   - awardedAt: string/timestamp (optional)
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated with Firebase Auth
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Platform Admin verification derived strictly from trusted token claims or verified bootstrap email
+    function isAdmin() {
+      return isAuthenticated() && (
+        ('admin' in request.auth.token && request.auth.token.admin == true) ||
+        ('role' in request.auth.token && (request.auth.token.role == 'ADMIN' || request.auth.token.role == 'SYSTEM_ADMIN')) ||
+        (request.auth.token.email != null &&
+         request.auth.token.email_verified == true &&
+         (request.auth.token.email == 'admin@roktherrajjho.org' || request.auth.token.email.matches('.*@roktherrajjho\\.org$')))
+      );
+    }
+
+    // Check if the user is an authorized verified blood donation organization
+    function isVerifiedOrg() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        ('isVerifiedOrg' in request.auth.token && request.auth.token.isVerifiedOrg == true) ||
+        ('role' in request.auth.token && (request.auth.token.role == 'ORGANIZATION_ADMIN' || request.auth.token.role == 'ORGANIZATION')) ||
+        ('orgId' in request.auth.token &&
+         exists(/databases/$(database)/documents/organizations/$(request.auth.token.orgId)) &&
+         get(/databases/$(database)/documents/organizations/$(request.auth.token.orgId)).data.isVerified == true)
+      );
+    }
+
+    // Check if user is a designated administrator of a specific organization
+    function isOrgAdmin(orgId, orgData) {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (('role' in request.auth.token && request.auth.token.role == 'ORGANIZATION_ADMIN') &&
+         ('orgId' in request.auth.token && request.auth.token.orgId == orgId)) ||
+        (orgData != null && (
+          ('adminId' in orgData && orgData.adminId == request.auth.uid) ||
+          ('adminUids' in orgData && request.auth.uid in orgData.adminUids)
+        ))
+      );
+    }
+
+    // Check if user is an authorized member or admin of a campaign's organization
+    function isOrgMember(orgId) {
+      return isAuthenticated() && (
+        isAdmin() ||
+        ('orgId' in request.auth.token && request.auth.token.orgId == orgId) ||
+        (exists(/databases/$(database)/documents/organizations/$(orgId)) &&
+         (('adminId' in get(/databases/$(database)/documents/organizations/$(orgId)).data &&
+           get(/databases/$(database)/documents/organizations/$(orgId)).data.adminId == request.auth.uid) ||
+          ('adminUids' in get(/databases/$(database)/documents/organizations/$(orgId)).data &&
+           request.auth.uid in get(/databases/$(database)/documents/organizations/$(orgId)).data.adminUids)))
+      );
+    }
+
+    // Validate required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate document contains only explicitly allowed fields (no schema pollution)
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate that immutable fields remain unchanged on update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Validate string length between min and max bounds
+    function validStringLength(str, minLen, maxLen) {
+      return str is string && str.size() >= minLen && str.size() <= maxLen;
+    }
+
+    // Validate optional string: if present, must be string within bounds
+    function isValidOptionalString(data, field, minLen, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() >= minLen && data[field].size() <= maxLen);
+    }
+
+    // Validate URL format and length
+    function isValidUrl(url) {
+      return url is string &&
+             url.size() <= 1000 &&
+             (url.matches('^https?://.*'));
+    }
+
+    // Validate optional URL
+    function isValidOptionalUrl(data, field) {
+      return !(field in data) || (data[field] is string && isValidUrl(data[field]));
+    }
+
+    // Validate email format and length
+    function isValidEmail(email) {
+      return email is string &&
+             email.size() <= 255 &&
+             email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    // Validate date representation: either Firestore timestamp or bounded string
+    function isValidDate(val) {
+      return val is timestamp || (val is string && val.size() >= 4 && val.size() <= 50);
+    }
+
+    // Validate optional date (null, timestamp, or string)
+    function isValidOptionalDate(data, field) {
+      return !(field in data) || data[field] == null || isValidDate(data[field]);
+    }
+
+    // Validate Bangladesh medical standard ABO & Rh blood groups
+    function isValidBloodGroup(group) {
+      return group in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+    }
+
+    // Validate optional list with element size bounds
+    function isValidOptionalList(data, field, maxSize) {
+      return !(field in data) || (data[field] is list && data[field].size() <= maxSize);
+    }
+
+    // ===============================================================
+    // Domain Validators (MANDATORY: Evaluated on both create and update)
+    // ===============================================================
+
+    // Domain Validator: profiles/{userId}
+    function isValidProfile(data) {
+      return hasOnlyAllowedFields([
+               'donorId', 'fullName', 'bengaliName', 'email', 'phone', 'bloodGroup',
+               'gender', 'divisionId', 'districtId', 'upazilaId', 'address', 'isAvailable',
+               'lastDonationDate', 'nextEligibleDate', 'totalDonations', 'rating', 'reviewCount',
+               'isVerified', 'avatarUrl', 'validUntil', 'bio', 'role', 'emergencyContact',
+               'nidNumber', 'createdAt', 'updatedAt'
+             ]) &&
+             hasRequiredFields([
+               'donorId', 'fullName', 'email', 'phone', 'bloodGroup', 'divisionId',
+               'districtId', 'upazilaId', 'isAvailable', 'totalDonations', 'rating',
+               'reviewCount', 'isVerified', 'role'
+             ]) &&
+             validStringLength(data.donorId, 5, 32) &&
+             validStringLength(data.fullName, 1, 150) &&
+             isValidOptionalString(data, 'bengaliName', 0, 150) &&
+             isValidEmail(data.email) &&
+             validStringLength(data.phone, 5, 25) &&
+             isValidBloodGroup(data.bloodGroup) &&
+             (!('gender' in data) || data.gender in ['Male', 'Female', 'Other', 'MALE', 'FEMALE', 'OTHER']) &&
+             validStringLength(data.divisionId, 1, 50) &&
+             validStringLength(data.districtId, 1, 50) &&
+             validStringLength(data.upazilaId, 1, 50) &&
+             isValidOptionalString(data, 'address', 0, 500) &&
+             data.isAvailable is bool &&
+             isValidOptionalDate(data, 'lastDonationDate') &&
+             isValidOptionalDate(data, 'nextEligibleDate') &&
+             data.totalDonations is int && data.totalDonations >= 0 &&
+             (data.rating is int || data.rating is float) && data.rating >= 0 && data.rating <= 5 &&
+             data.reviewCount is int && data.reviewCount >= 0 &&
+             data.isVerified is bool &&
+             isValidOptionalUrl(data, 'avatarUrl') &&
+             isValidOptionalString(data, 'validUntil', 0, 50) &&
+             isValidOptionalString(data, 'bio', 0, 1000) &&
+             data.role in ['DONOR', 'RECIPIENT', 'VOLUNTEER', 'ORGANIZATION', 'ORGANIZATION_ADMIN', 'ADMIN', 'SYSTEM_ADMIN'] &&
+             isValidOptionalString(data, 'emergencyContact', 0, 25) &&
+             isValidOptionalString(data, 'nidNumber', 0, 30) &&
+             isValidOptionalDate(data, 'createdAt') &&
+             isValidOptionalDate(data, 'updatedAt');
+    }
+
+    // Integrity enforcement for non-admin profile creation (prevents self-verification/admin injection)
+    function isNonAdminProfileCreation(data) {
+      return data.isVerified == false &&
+             data.role in ['DONOR', 'RECIPIENT', 'VOLUNTEER'] &&
+             data.totalDonations == 0 &&
+             data.reviewCount == 0 &&
+             data.rating >= 0 && data.rating <= 5;
+    }
+
+    // Integrity enforcement for non-admin profile update (locks verified counters and admin badge)
+    function isNonAdminProfileUpdate(newData, oldData) {
+      return newData.donorId == oldData.donorId &&
+             newData.isVerified == oldData.isVerified &&
+             newData.role == oldData.role &&
+             newData.totalDonations == oldData.totalDonations &&
+             newData.rating == oldData.rating &&
+             newData.reviewCount == oldData.reviewCount &&
+             (!('createdAt' in oldData) || !('createdAt' in newData) || newData.createdAt == oldData.createdAt);
+    }
+
+    // Domain Validator: blood_requests/{requestId}
+    function isValidBloodRequest(data) {
+      return hasOnlyAllowedFields([
+               'id', 'requesterId', 'patientName', 'bloodGroup', 'unitsNeeded',
+               'hospitalName', 'hospitalAddress', 'divisionId', 'districtId', 'upazilaId',
+               'contactNumber', 'alternateNumber', 'urgencyLevel', 'requiredDate',
+               'requiredTime', 'reason', 'status', 'matchedDonorName', 'matchedDonorPhone',
+               'matchedDonorId', 'medicalDocumentsUrl', 'createdAt', 'updatedAt'
+             ]) &&
+             hasRequiredFields([
+               'requesterId', 'patientName', 'bloodGroup', 'unitsNeeded', 'hospitalName',
+               'divisionId', 'districtId', 'upazilaId', 'contactNumber', 'urgencyLevel',
+               'requiredDate', 'status'
+             ]) &&
+             validStringLength(data.requesterId, 1, 128) &&
+             validStringLength(data.patientName, 1, 150) &&
+             isValidBloodGroup(data.bloodGroup) &&
+             data.unitsNeeded is int && data.unitsNeeded >= 1 && data.unitsNeeded <= 50 &&
+             validStringLength(data.hospitalName, 1, 255) &&
+             isValidOptionalString(data, 'hospitalAddress', 0, 500) &&
+             validStringLength(data.divisionId, 1, 50) &&
+             validStringLength(data.districtId, 1, 50) &&
+             validStringLength(data.upazilaId, 1, 50) &&
+             validStringLength(data.contactNumber, 5, 25) &&
+             isValidOptionalString(data, 'alternateNumber', 0, 25) &&
+             data.urgencyLevel in ['IMMEDIATE', 'CRITICAL', 'NORMAL'] &&
+             validStringLength(data.requiredDate, 1, 50) &&
+             isValidOptionalString(data, 'requiredTime', 0, 50) &&
+             isValidOptionalString(data, 'reason', 0, 1000) &&
+             data.status in ['PENDING', 'SEARCHING', 'MATCHED', 'COMPLETED', 'CANCELLED'] &&
+             isValidOptionalString(data, 'matchedDonorName', 0, 150) &&
+             isValidOptionalString(data, 'matchedDonorPhone', 0, 25) &&
+             isValidOptionalString(data, 'matchedDonorId', 0, 128) &&
+             isValidOptionalUrl(data, 'medicalDocumentsUrl') &&
+             isValidOptionalDate(data, 'createdAt') &&
+             isValidOptionalDate(data, 'updatedAt');
+    }
+
+    // Domain Validator: donations/{donationId}
+    function isValidDonation(data) {
+      return hasOnlyAllowedFields([
+               'id', 'donorId', 'requestId', 'patientName', 'hospitalName',
+               'donationDate', 'bloodGroup', 'units', 'certificateNumber',
+               'isVerified', 'verifiedBy', 'verifiedByOrgId', 'proofDocumentUrl',
+               'notes', 'createdAt'
+             ]) &&
+             hasRequiredFields([
+               'donorId', 'hospitalName', 'donationDate', 'bloodGroup', 'units', 'isVerified'
+             ]) &&
+             validStringLength(data.donorId, 1, 128) &&
+             isValidOptionalString(data, 'requestId', 0, 128) &&
+             isValidOptionalString(data, 'patientName', 0, 150) &&
+             validStringLength(data.hospitalName, 1, 255) &&
+             isValidDate(data.donationDate) &&
+             isValidBloodGroup(data.bloodGroup) &&
+             data.units is int && data.units >= 1 && data.units <= 10 &&
+             isValidOptionalString(data, 'certificateNumber', 0, 100) &&
+             data.isVerified is bool &&
+             isValidOptionalString(data, 'verifiedBy', 0, 150) &&
+             isValidOptionalString(data, 'verifiedByOrgId', 0, 128) &&
+             isValidOptionalUrl(data, 'proofDocumentUrl') &&
+             isValidOptionalString(data, 'notes', 0, 1000) &&
+             isValidOptionalDate(data, 'createdAt');
+    }
+
+    // Domain Validator: organizations/{orgId}
+    function isValidOrganization(data) {
+      return hasOnlyAllowedFields([
+               'id', 'name', 'bengaliName', 'type', 'registrationNumber',
+               'divisionId', 'districtId', 'upazilaId', 'contactPhone', 'contactEmail',
+               'website', 'address', 'logoUrl', 'isVerified', 'memberCount',
+               'totalDonations', 'campaignsCount', 'adminUids', 'adminId',
+               'description', 'createdAt', 'updatedAt'
+             ]) &&
+             hasRequiredFields([
+               'name', 'divisionId', 'districtId', 'contactPhone', 'isVerified', 'memberCount'
+             ]) &&
+             validStringLength(data.name, 1, 200) &&
+             isValidOptionalString(data, 'bengaliName', 0, 200) &&
+             isValidOptionalString(data, 'type', 0, 100) &&
+             isValidOptionalString(data, 'registrationNumber', 0, 100) &&
+             validStringLength(data.divisionId, 1, 50) &&
+             validStringLength(data.districtId, 1, 50) &&
+             isValidOptionalString(data, 'upazilaId', 0, 50) &&
+             validStringLength(data.contactPhone, 5, 25) &&
+             (!('contactEmail' in data) || isValidEmail(data.contactEmail)) &&
+             isValidOptionalUrl(data, 'website') &&
+             isValidOptionalString(data, 'address', 0, 500) &&
+             isValidOptionalUrl(data, 'logoUrl') &&
+             data.isVerified is bool &&
+             data.memberCount is int && data.memberCount >= 0 &&
+             (!('totalDonations' in data) || (data.totalDonations is int && data.totalDonations >= 0)) &&
+             (!('campaignsCount' in data) || (data.campaignsCount is int && data.campaignsCount >= 0)) &&
+             isValidOptionalList(data, 'adminUids', 50) &&
+             isValidOptionalString(data, 'adminId', 0, 128) &&
+             isValidOptionalString(data, 'description', 0, 2000) &&
+             isValidOptionalDate(data, 'createdAt') &&
+             isValidOptionalDate(data, 'updatedAt');
+    }
+
+    // Domain Validator: campaigns/{campaignId}
+    function isValidCampaign(data) {
+      return hasOnlyAllowedFields([
+               'id', 'orgId', 'orgName', 'title', 'bengaliTitle', 'venue',
+               'divisionId', 'districtId', 'upazilaId', 'startDate', 'endDate',
+               'targetUnits', 'registeredCount', 'bannerUrl', 'description',
+               'status', 'createdBy', 'createdAt', 'updatedAt'
+             ]) &&
+             hasRequiredFields([
+               'orgId', 'title', 'districtId', 'startDate', 'endDate',
+               'targetUnits', 'registeredCount'
+             ]) &&
+             validStringLength(data.orgId, 1, 128) &&
+             isValidOptionalString(data, 'orgName', 0, 200) &&
+             validStringLength(data.title, 1, 255) &&
+             isValidOptionalString(data, 'bengaliTitle', 0, 255) &&
+             isValidOptionalString(data, 'venue', 0, 255) &&
+             isValidOptionalString(data, 'divisionId', 0, 50) &&
+             validStringLength(data.districtId, 1, 50) &&
+             isValidOptionalString(data, 'upazilaId', 0, 50) &&
+             isValidDate(data.startDate) &&
+             isValidDate(data.endDate) &&
+             data.targetUnits is int && data.targetUnits >= 1 &&
+             data.registeredCount is int && data.registeredCount >= 0 &&
+             isValidOptionalUrl(data, 'bannerUrl') &&
+             isValidOptionalString(data, 'description', 0, 2000) &&
+             (!('status' in data) || data.status in ['UPCOMING', 'ONGOING', 'COMPLETED', 'CANCELLED']) &&
+             isValidOptionalString(data, 'createdBy', 0, 128) &&
+             isValidOptionalDate(data, 'createdAt') &&
+             isValidOptionalDate(data, 'updatedAt');
+    }
+
+    // Domain Validator: reviews/{reviewId}
+    function isValidReview(data) {
+      return hasOnlyAllowedFields([
+               'id', 'donorId', 'reviewerId', 'reviewerName', 'rating', 'comment',
+               'createdAt', 'date'
+             ]) &&
+             hasRequiredFields([
+               'donorId', 'reviewerId', 'reviewerName', 'rating', 'comment'
+             ]) &&
+             validStringLength(data.donorId, 1, 128) &&
+             validStringLength(data.reviewerId, 1, 128) &&
+             validStringLength(data.reviewerName, 1, 150) &&
+             (data.rating is int || data.rating is float) && data.rating >= 1 && data.rating <= 5 &&
+             validStringLength(data.comment, 1, 1000) &&
+             isValidOptionalDate(data, 'createdAt') &&
+             isValidOptionalString(data, 'date', 0, 50);
+    }
+
+    // Domain Validator: notifications/{notificationId}
+    function isValidNotification(data) {
+      return hasOnlyAllowedFields([
+               'id', 'userId', 'title', 'message', 'type', 'link', 'isRead',
+               'senderId', 'createdAt', 'date'
+             ]) &&
+             hasRequiredFields([
+               'userId', 'title', 'message', 'type', 'isRead'
+             ]) &&
+             validStringLength(data.userId, 1, 128) &&
+             validStringLength(data.title, 1, 200) &&
+             validStringLength(data.message, 1, 1000) &&
+             data.type in ['EMERGENCY', 'EMERGENCY_SOS', 'SUCCESS', 'INFO', 'STATUS_CHANGE', 'BADGE_AWARD'] &&
+             isValidOptionalString(data, 'link', 0, 500) &&
+             data.isRead is bool &&
+             isValidOptionalString(data, 'senderId', 0, 128) &&
+             isValidOptionalDate(data, 'createdAt') &&
+             isValidOptionalString(data, 'date', 0, 50);
+    }
+
+    // Domain Validator: badges/{badgeId}
+    function isValidBadge(data) {
+      return hasOnlyAllowedFields([
+               'id', 'userId', 'key', 'title', 'bengaliTitle', 'description',
+               'icon', 'unlockedAt', 'awardedAt'
+             ]) &&
+             hasRequiredFields([
+               'userId', 'key', 'title', 'bengaliTitle', 'description', 'icon'
+             ]) &&
+             validStringLength(data.userId, 1, 128) &&
+             validStringLength(data.key, 1, 50) &&
+             validStringLength(data.title, 1, 100) &&
+             validStringLength(data.bengaliTitle, 1, 100) &&
+             validStringLength(data.description, 1, 500) &&
+             validStringLength(data.icon, 1, 50) &&
+             isValidOptionalDate(data, 'unlockedAt') &&
+             isValidOptionalDate(data, 'awardedAt');
+    }
+
+    // ===============================================================
+    // Collection Security Rules
+    // ===============================================================
+
+    // 1. Profiles Collection (Donor Directory)
+    match /profiles/{userId} {
+      // Public directory allows any user or emergency attendant to find compatible blood donors
+      allow read: if true;
+
+      // Authenticated user creates their own profile with unverified initial counters
+      allow create: if isAuthenticated() &&
+                    request.auth.uid == userId &&
+                    isValidProfile(request.resource.data) &&
+                    (isAdmin() || isNonAdminProfileCreation(request.resource.data));
+
+      // Authenticated user updates their own profile without modifying verified fields, or platform admin updates any fields
+      allow update: if isAuthenticated() &&
+                    isValidProfile(request.resource.data) &&
+                    (isAdmin() || (request.auth.uid == userId && isNonAdminProfileUpdate(request.resource.data, resource.data)));
+
+      // Authenticated user deletes their own profile or platform admin deletes
+      allow delete: if isAuthenticated() &&
+                    (request.auth.uid == userId || isAdmin());
+    }
+
+    // 2. Emergency Blood Requests Collection
+    match /blood_requests/{requestId} {
+      // Anyone can browse emergency requests across all 64 districts in real-time
+      allow read: if true;
+
+      // Any authenticated user can publish an emergency blood request
+      allow create: if isAuthenticated() &&
+                    isValidBloodRequest(request.resource.data) &&
+                    (isAdmin() || (request.resource.data.requesterId == request.auth.uid && request.resource.data.status in ['PENDING', 'SEARCHING']));
+
+      // Updates allowed for:
+      // a) Platform Admin
+      // b) Original Requester (cannot transfer requesterId or modify createdAt)
+      // c) Donor accepting the request (strict transition to MATCHED, only updating matching fields)
+      allow update: if isAuthenticated() &&
+                    isValidBloodRequest(request.resource.data) &&
+                    (
+                      isAdmin() ||
+                      // Requester updates
+                      (request.auth.uid == resource.data.requesterId &&
+                       request.resource.data.requesterId == resource.data.requesterId &&
+                       (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt)) ||
+                      // Donor accepts / matches request
+                      (resource.data.status in ['PENDING', 'SEARCHING'] &&
+                       request.resource.data.status == 'MATCHED' &&
+                       request.resource.data.matchedDonorId == request.auth.uid &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'matchedDonorId', 'matchedDonorName', 'matchedDonorPhone', 'updatedAt']))
+                    );
+
+      // Only the requester or platform admin can delete a blood request
+      allow delete: if isAuthenticated() &&
+                    (request.auth.uid == resource.data.requesterId || isAdmin());
+    }
+
+    // 3. Donation Records & Verified Histories Collection
+    match /donations/{donationId} {
+      // Public can read donation statistics and verified histories
+      allow read: if true;
+
+      // Authenticated donor can log a donation (must be unverified), or verified org / platform admin can log directly
+      allow create: if isAuthenticated() &&
+                    isValidDonation(request.resource.data) &&
+                    (isAdmin() || isVerifiedOrg() || (request.resource.data.donorId == request.auth.uid && request.resource.data.isVerified == false));
+
+      // Only platform admins or verified organizations can update or verify donation records
+      allow update: if isAuthenticated() &&
+                    isValidDonation(request.resource.data) &&
+                    (isAdmin() || isVerifiedOrg()) &&
+                    request.resource.data.donorId == resource.data.donorId;
+
+      // Only platform admins or verified organizations can delete donation records
+      allow delete: if isAuthenticated() &&
+                    (isAdmin() || isVerifiedOrg());
+    }
+
+    // 4. Organizations Collection (Verified Blood Clubs & NGOs)
+    match /organizations/{orgId} {
+      // Public can browse verified blood donation organizations
+      allow read: if true;
+
+      // Platform admins or authenticated users registering an unverified organization
+      allow create: if isAuthenticated() &&
+                    isValidOrganization(request.resource.data) &&
+                    (isAdmin() || (request.resource.data.isVerified == false && ('adminId' in request.resource.data && request.resource.data.adminId == request.auth.uid)));
+
+      // Verified organization admins can update organization details, but cannot self-verify
+      allow update: if isAuthenticated() &&
+                    isValidOrganization(request.resource.data) &&
+                    (isAdmin() || (isOrgAdmin(orgId, resource.data) && request.resource.data.isVerified == resource.data.isVerified));
+
+      // Platform admin only can delete an organization
+      allow delete: if isAdmin();
+    }
+
+    // 5. Campaigns & Voluntary Blood Drives Collection
+    match /campaigns/{campaignId} {
+      // Anyone can browse voluntary blood donation drives and campaigns
+      allow read: if true;
+
+      // Organization members or platform admins can schedule a campaign
+      allow create: if isAuthenticated() &&
+                    isValidCampaign(request.resource.data) &&
+                    (isAdmin() || isVerifiedOrg() || isOrgMember(request.resource.data.orgId));
+
+      // Organization members or platform admins can update a campaign (orgId is immutable)
+      allow update: if isAuthenticated() &&
+                    isValidCampaign(request.resource.data) &&
+                    (isAdmin() || isVerifiedOrg() || isOrgMember(resource.data.orgId)) &&
+                    request.resource.data.orgId == resource.data.orgId;
+
+      // Organization members or platform admins can delete a campaign
+      allow delete: if isAuthenticated() &&
+                    (isAdmin() || isOrgMember(resource.data.orgId));
+    }
+
+    // 6. Donor Reviews Collection
+    match /reviews/{reviewId} {
+      // Public can view community donor reviews and gratitude comments
+      allow read: if true;
+
+      // Authenticated users can write a review, but cannot review their own profile
+      allow create: if isAuthenticated() &&
+                    isValidReview(request.resource.data) &&
+                    request.auth.uid == request.resource.data.reviewerId &&
+                    request.auth.uid != request.resource.data.donorId;
+
+      // Reviewer or platform admin can edit a review (donorId and reviewerId remain immutable)
+      allow update: if isAuthenticated() &&
+                    isValidReview(request.resource.data) &&
+                    (isAdmin() || (
+                      request.auth.uid == resource.data.reviewerId &&
+                      request.resource.data.donorId == resource.data.donorId &&
+                      request.resource.data.reviewerId == resource.data.reviewerId
+                    ));
+
+      // Reviewer or platform admin can delete a review
+      allow delete: if isAuthenticated() &&
+                    (request.auth.uid == resource.data.reviewerId || isAdmin());
+    }
+
+    // 7. User Notifications & Emergency Alerts Collection
+    match /notifications/{notificationId} {
+      // Private: Only the recipient user or platform admin can read notifications
+      allow read: if isAuthenticated() &&
+                  (request.auth.uid == resource.data.userId || isAdmin());
+
+      // Platform admin/system or authenticated users dispatching an emergency broadcast alert
+      allow create: if isAuthenticated() &&
+                    isValidNotification(request.resource.data) &&
+                    (isAdmin() || (request.resource.data.type in ['EMERGENCY', 'EMERGENCY_SOS'] && request.resource.data.isRead == false));
+
+      // Recipient user can mark notification as read, or platform admin can perform full update
+      allow update: if isAuthenticated() &&
+                    (
+                      (isAdmin() && isValidNotification(request.resource.data)) ||
+                      (request.auth.uid == resource.data.userId &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']) &&
+                       request.resource.data.isRead is bool)
+                    );
+
+      // Recipient user or platform admin can delete notifications
+      allow delete: if isAuthenticated() &&
+                    (request.auth.uid == resource.data.userId || isAdmin());
+    }
+
+    // 8. Gamification Badges Collection
+    match /badges/{badgeId} {
+      // Public can view earned badges on donor profiles
+      allow read: if true;
+
+      // Gamification badges are issued only by platform admin or automated backend triggers
+      allow create, update: if isAdmin() && isValidBadge(request.resource.data);
+
+      // Only platform admin can delete badges
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // Root Catch-All: Strict Default Deny
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
